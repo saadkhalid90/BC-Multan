@@ -102,6 +102,9 @@
                     .append("circle")
                     .classed("dot", true)
                     .attr("r", 1)
+                    .attr("tabindex", 0)
+                    .on("focus", (d)=>{appendTooltip(d3.event, d);})
+                    .on("blur", (d)=>{removeTooltip();})
                     .attr("filter", 1)
                     .styles({
                       'fill': '#FFFF00',
@@ -148,6 +151,7 @@
       })
 
       const appendTooltip = (event, dat) => {
+        console.log(event);
         const toolTipWidth = 180;
 
         const tool = d3.select(container).append('div')
@@ -159,6 +163,15 @@
           .style('transform', 'translateY(0px)')
           .style('opacity', '1');
 
+        let x,y;
+        if(event.type == "focus"){
+          let bbox = event.target.getBBox();
+          x = bbox.x;
+          y = bbox.y
+        }else{
+          x = event.x;
+          y = event.y;
+        }
 
         d3.select('.tooltip').html(`
             <p class="toolText">
@@ -166,8 +179,8 @@
             </p>
 
           `)
-          .style('top', `${event.y + 10}px`)
-          .style('left', `${event.x - (toolTipWidth/2)}px`);
+          .style('top', `${y + 10}px`)
+          .style('left', `${x - (toolTipWidth/2)}px`);
 
         d3.select('.toolText')
           .style('transform', 'translateY(-20px)')
