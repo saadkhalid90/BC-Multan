@@ -53,10 +53,9 @@
     //Setup mapbox-gl map
     const map = new mapboxgl.Map({
       container: 'map', // container id
-      style: 'mapbox://styles/saadkhalid90/ckf40yx8e17kt19ldyvc65r75', // default style picked from mapbox gljs docs
-      center: [71.4849, 30.1975], // picked a center coordinate for Pishin (Balochistan)
-      zoom: 11,
-
+      style: 'mapbox://styles/saadkhalid90/ckf40yx8e17kt19ldyvc65r75', // Saad's custom style (British Council Branding)
+      center: [71.4849, 30.1975], // picked a center coordinate for Multan city
+      zoom: 11, // zoom value has been ascertained manually, is there a way to automate this given the locations (do some math with the centroid and the extent)
     })
     map.scrollZoom.disable() // disable zoom on pinch
     map.addControl(new mapboxgl.NavigationControl()); // add navigation controls like zoom etc
@@ -91,11 +90,12 @@
     let d3Projection = getD3();
 
 
-    const path = d3.geoPath();
-
     async function readAndPlot(){
+      // read in the city's hubs
+
       const MultanLocs = await d3.csv('MultanHubs.csv');
 
+      // initialize the city's hubs (will be positioned by the render function)
       const dots = svg.selectAll("circle.dot")
                     .data(MultanLocs)
                     .enter()
@@ -111,16 +111,17 @@
                       'stroke-opacity': 0.7
                     });
 
+      // render function positions/ repositions the locations according mapbox state
       function render() {
+        // getting the current map projection using mapbox state
         d3Projection = getD3();
-        path.projection(d3Projection);
 
+        // positioning/ repositioning the location markers
         dots.attrs({
               cx: d => d3Projection([+d.Lon, +d.Lat])[0],
               cy: d => d3Projection([+d.Lon, +d.Lat])[1]
             })
             .transition()
-            //.delay(renderDelay)
             .duration(750)
             .attr("r", function(d, i){
               const filter = d3.select(this).attr('filter');
@@ -129,9 +130,10 @@
 
       };
 
+      // position the locations for the first time
       render();
 
-      // re-render our visualization whenever the view changes
+      // re-render our visualization whenever the view changes (mapbox state changes - zoom/ pan etc)
       map.on("viewreset", function() {
         render()
       });
@@ -139,6 +141,8 @@
         render()
       });
 
+      //////////////////////////////////////////////////
+      // event listeners for adding and removing tooltip
       svg.selectAll("circle.dot").on('mouseover', function(d, i){
         appendTooltip(d3.event, d);
       })
@@ -146,7 +150,9 @@
       svg.selectAll("circle.dot").on('mouseout', function(d, i){
         removeTooltip();
       })
+      //////////////////////////////////////////////////
 
+      // appends a tooltip showing location name
       const appendTooltip = (event, dat) => {
         const toolTipWidth = 180;
 
@@ -177,20 +183,13 @@
           .style('transform', 'translateY(0px)')
           .style('opacity', '1');
       }
-      //
+      // removes tooltip
       const removeTooltip = () => {
         d3.select(container).select('div.tooltip').remove();
       }
     }
 
     readAndPlot();
-
-
-
-
-
-    //readAndDraw('Farmer.csv', 1500);
-
 
 
   </script>
