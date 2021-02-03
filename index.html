@@ -6,6 +6,7 @@
   <script src="https://d3js.org/d3.v5.min.js"></script>
   <script src="https://d3js.org/d3-selection-multi.v1.min.js"></script>
   <script src="//d3js.org/topojson.v1.min.js"></script>
+  <script src="voronoi.js"></script>
   <script src='https://api.mapbox.com/mapbox-gl-js/v1.8.1/mapbox-gl.js'></script>
   <link href='https://api.mapbox.com/mapbox-gl-js/v1.8.1/mapbox-gl.css' rel='stylesheet'/>
   <style media="screen">
@@ -57,14 +58,32 @@
       center: [71.4849, 30.1975], // picked a center coordinate for Multan city
       zoom: 11, // zoom value has been ascertained manually, is there a way to automate this given the locations (do some math with the centroid and the extent)
     })
+
+    // disabling and enabling some map features
     map.scrollZoom.disable() // disable zoom on pinch
+    map.doubleClickZoom.disable() // disable double click zoom
     map.addControl(new mapboxgl.NavigationControl()); // add navigation controls like zoom etc
+
 
     // Setup our svg layer that we can manipulate with d3
     // getting the container which contains the mapbox map
     const container = map.getCanvasContainer();
     // appending an svg to that container
     const svg = d3.select(container).append("svg");
+
+    // for setting up an event handler (when the user click on anything but the elements in the SVG)
+    const backgroundRect = svg.append('rect')
+                              .attrs({
+                                id: 'backgroundRect',
+                                x: 0,
+                                y: 0,
+                                width: '100%',
+                                height: '100%'
+                              })
+                              .styles({
+                                fill: 'grey',
+                                opacity: 0
+                              });
 
     // we calculate the scale given mapbox state (derived from viewport-mercator-project's code)
     // to define a d3 projection
@@ -82,22 +101,35 @@
         .center([center.lng, center.lat])
         .translate([bbox.width/2, bbox.height/2])
         .scale(scale);
-
-
       return projection;
     }
+
+
     // calculate the original d3 projection
     let d3Projection = getD3();
 
-
+    // function reading in the data and plotting locations
     async function readAndPlot(){
       // read in the city's hubs
+      const cityLocs = await d3.csv('MultanHubs.csv');
 
-      const MultanLocs = await d3.csv('MultanHubs.csv');
+      // positioned same as the location of city hubs, these will just animate when hovered
+      const interBub = svg.selectAll("circle.interBub")
+                    .data(cityLocs)
+                    .enter()
+                    .append("circle")
+                    .classed("interBub", true)
+                    .attr("r", 0)
+                    .attr("filter", 1)
+                    .styles({
+                      'fill': '#FFFF00',
+                      'fill-opacity': 0.8,
+                      'stroke': 'none'
+                    });
 
       // initialize the city's hubs (will be positioned by the render function)
       const dots = svg.selectAll("circle.dot")
-                    .data(MultanLocs)
+                    .data(cityLocs)
                     .enter()
                     .append("circle")
                     .classed("dot", true)
@@ -108,13 +140,18 @@
                       'fill-opacity': 0,
                       'stroke': '#FFFF00',
                       'stroke-width': '2px',
-                      'stroke-opacity': 0.7
+                      'stroke-opacity': 0.9
                     });
+
+
 
       // render function positions/ repositions the locations according mapbox state
       function render() {
         // getting the current map projection using mapbox state
         d3Projection = getD3();
+
+        // remove any previously drawn voronoi (voronoi computed and drawn at each instant of render)
+        removeIntVoronoi(svg);
 
         // positioning/ repositioning the location markers
         dots.attrs({
@@ -126,7 +163,39 @@
             .attr("r", function(d, i){
               const filter = d3.select(this).attr('filter');
               return (filter == 1) ? 6 : 0;
+            });
+
+        // positioning/ repositioning the interaction bubbles (animate when locations hovered)
+        interBub.attrs({
+              cx: d => d3Projection([+d.Lon, +d.Lat])[0],
+              cy: d => d3Projection([+d.Lon, +d.Lat])[1]
             })
+            .transition()
+            .duration(750);
+
+        // compute and append updated voronoi based on the new projection
+        const vorCircs = appendIntVoronoi(
+            {
+              x: d => d3Projection([+d.Lon, +d.Lat])[0],
+              y: d => d3Projection([+d.Lon, +d.Lat])[1]
+            },
+            {
+              x: d => d3Projection([+d.Lon, +d.Lat])[0],
+              y: d => d3Projection([+d.Lon, +d.Lat])[1]
+            },
+            [
+              [0, 0],
+              [getMapCanvasExtent().width, getMapCanvasExtent().height]
+            ],
+            svg,
+            cityLocs,
+            18
+          );
+
+        // activate Hover events on the voronoi circles
+        // (they are activated on each instant of render because the previous
+        // voronoi is deleted)
+        activateHoverEvents();
 
       };
 
@@ -142,14 +211,56 @@
       });
 
       //////////////////////////////////////////////////
-      // event listeners for adding and removing tooltip
-      svg.selectAll("circle.dot").on('mouseover', function(d, i){
-        appendTooltip(d3.event, d);
+      // function for activating event listeners - to add and remove tooltip
+      // (on voronoi circles)
+
+      function activateHoverEvents(){
+        const transDur = 175;
+        svg.selectAll("circle.circle-catcher").on('mouseover', function(d, i){
+          appendTooltip(d3.event, d);
+
+          const LM = d3.select(this).datum()["Famous_Landmarks"];
+
+          d3.selectAll('circle.dot').transition()
+                      .duration(transDur)
+                      .attr('r', d => (d["Famous_Landmarks"] == LM) ? 12 : 6)
+                      .style('stroke-opacity', d => (d["Famous_Landmarks"] == LM) ? 0.9 : 0.3);
+
+          svg.selectAll("circle.interBub")
+            //.filter((d, i) => d["Famous_Landmarks"] == LM)
+            .transition()
+            .duration(transDur + 75)
+            .attr('r', d => (d["Famous_Landmarks"] == LM) ? 7 : 0);
+
+
+        })
+
+        svg.selectAll("circle.circle-catcher").on('mouseout', function(d, i){
+          removeTooltip();
+
+          const LM = d3.select(this).datum()["Famous_Landmarks"];
+          //
+          svg.selectAll("circle.dot")
+            .transition()
+            .duration(transDur)
+            .attr('r', 6)
+            .style('stroke-opacity', 0.9);
+          //
+          svg.selectAll("circle.interBub")
+            //.filter((d, i) => d["Famous_Landmarks"] == LM)
+            .transition()
+            .duration(transDur)
+            .attr('r', 0);
+        })
+      }
+
+      // test event for returning to default state
+      // click anywhere on the SVG except the voronoi circles (empty space in SVG)
+      d3.selectAll('rect#backgroundRect').on('click', (d, i) => {
+        console.log('This is the SVG minus the elements!')
       })
 
-      svg.selectAll("circle.dot").on('mouseout', function(d, i){
-        removeTooltip();
-      })
+
       //////////////////////////////////////////////////
 
       // appends a tooltip showing location name
@@ -191,6 +302,12 @@
 
     readAndPlot();
 
+    // function used compute extent of the Mapbox canvas
+    // used for inputting extent to the d3 voronoi function
+    function getMapCanvasExtent() {
+      const mapCanvas = document.getElementsByClassName('mapboxgl-canvas')[0]
+      return mapCanvas.getBoundingClientRect()
+    }
 
   </script>
 </body>
