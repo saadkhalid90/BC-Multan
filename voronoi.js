@@ -22,11 +22,10 @@ function appendIntVoronoi(cellXY, circleXY, voronoiExt, svgSelection, pointData,
                                 //Then append a path element that will define the shape of the clipPath
                                 .append("path")
                                 .attr("class", "clip-path-circle")
-                                .attr("d", d => `M${d.join(",")}Z`);
+                                .attr("d", d => (d !== undefined) ? `M${d.join(",")}Z` : "");
 
       //Append larger circles and clip them
-    const clipCircSelection =
-    svg.append('g')
+    const clipCircSelection = svgSelection.append('g')
         .attr('id', 'CCatcher-Grp')
           .selectAll("circle.circle-catcher")
           .data(pointData)
@@ -55,3 +54,6 @@ function removeIntVoronoi(svgSelection) {
   svgSelection.select('defs').remove();
   svgSelection.select('g#CCatcher-Grp').remove();
 }
+
+//center: [74.736398, 36.344094], // picked a center coordinate for Pishin (Balochistan)
+// zoom: 11.33,
